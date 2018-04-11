@@ -74,6 +74,18 @@ class SerializerTest : public ::testing::Test {
     ExpectDeserializationRoundTrip(model, proto, type);
   }
 
+  void ExpectRoundTrip(const FieldValue& model, const google::firestore::v1beta1::Value& proto, FieldValue::Type type) {
+    // First, serialize model with our (nanopb based) serializer, then
+    // deserialize the resulting bytes with libprotobuf and ensure the result is
+    // the same as the expected proto.
+    ExpectSerializationRoundTrip(model, proto, type);
+
+    // Next, serialize proto with libprotobuf, then deserialize the resulting
+    // bytes with our (nanopb based) deserializer and ensure the result is the
+    // same as the expected model.
+    ExpectDeserializationRoundTrip(model, proto, type);
+  }
+
  private:
   google::firestore::v1beta1::Value ConvertModelToProto(
       const FieldValue& model) {
@@ -222,6 +234,119 @@ TEST_F(SerializerTest, WritesNestedObjectsToBytes) {
                                   std::numeric_limits<int64_t>::max())}})}})}});
 
   ExpectRoundTrip(model, FieldValue::Type::Object);
+}
+
+TEST_F(SerializerTest, WritesNestedObjectsToBytes_option2_inlined) {
+  FieldValue model = FieldValue::ObjectValueFromMap(
+      {{"b", FieldValue::TrueValue()},
+       // TODO(rsgowman): add doubles (once they're supported)
+       // {"d", FieldValue::DoubleValue(std::numeric_limits<double>::max())},
+       {"i", FieldValue::IntegerValue(1)},
+       {"n", FieldValue::NullValue()},
+       {"s", FieldValue::StringValue("foo")},
+       // TODO(rsgowman): add arrays (once they're supported)
+       // {"a", [2, "bar", {"b", false}]},
+       {"o", FieldValue::ObjectValueFromMap(
+                 {{"d", FieldValue::IntegerValue(100)},
+                  {"nested",
+                   FieldValue::ObjectValueFromMap(
+                       {{"e", FieldValue::IntegerValue(
+                                  std::numeric_limits<int64_t>::max())}})}})}});
+
+  google::firestore::v1beta1::Value inner_proto;
+  google::protobuf::Map<std::string, google::firestore::v1beta1::Value>* inner_fields = inner_proto.mutable_map_value()->mutable_fields();
+  google::firestore::v1beta1::Value max_int64_proto;
+  max_int64_proto.set_integer_value(std::numeric_limits<int64_t>::max());
+  (*inner_fields)["e"] = max_int64_proto;
+
+  google::firestore::v1beta1::Value middle_proto;
+  google::protobuf::Map<std::string, google::firestore::v1beta1::Value>* middle_fields = middle_proto.mutable_map_value()->mutable_fields();
+  google::firestore::v1beta1::Value integer_proto;
+  integer_proto.set_integer_value(100);
+  (*middle_fields)["d"] = integer_proto;
+  (*middle_fields)["nested"] = inner_proto;
+
+  google::firestore::v1beta1::Value proto;
+  google::protobuf::Map<std::string, google::firestore::v1beta1::Value>* fields = proto.mutable_map_value()->mutable_fields();
+  google::firestore::v1beta1::Value bool_proto;
+  bool_proto.set_boolean_value(true);
+  (*fields)["b"] = bool_proto;
+  google::firestore::v1beta1::Value int_proto;
+  int_proto.set_integer_value(1);
+  (*fields)["i"] = int_proto;
+  google::firestore::v1beta1::Value null_proto;
+  null_proto.set_null_value(google::protobuf::NullValue::NULL_VALUE);
+  (*fields)["n"] = null_proto;
+  google::firestore::v1beta1::Value string_proto;
+  string_proto.set_string_value("foo");
+  (*fields)["s"] = string_proto;
+  (*fields)["o"] = middle_proto;
+
+  ExpectRoundTrip(model, proto, FieldValue::Type::Object);
+}
+
+TEST_F(SerializerTest, WritesNestedObjectsToBytes_option3_partialinlined) {
+  // TODO: Move these functions out to fixture (and use them throughout).
+  // Inlined here for demo purposes only. Note that objc exposes these as public
+  // on the serializer itself, but we haven't done that in c++. (We could.)
+  // Obvious difference: we're using libprotobuf (rather than nanopb) here.
+  auto EncodeNull = []() -> google::firestore::v1beta1::Value {
+    google::firestore::v1beta1::Value proto;
+    proto.set_null_value(google::protobuf::NullValue::NULL_VALUE);
+    return proto;
+  };
+  auto EncodeBoolean = [](bool b) -> google::firestore::v1beta1::Value {
+    google::firestore::v1beta1::Value proto;
+    proto.set_boolean_value(b);
+    return proto;
+  };
+  auto EncodeInteger = [](int64_t i) -> google::firestore::v1beta1::Value {
+    google::firestore::v1beta1::Value proto;
+    proto.set_integer_value(i);
+    return proto;
+  };
+  auto EncodeString = [](const std::string& s) -> google::firestore::v1beta1::Value {
+    google::firestore::v1beta1::Value proto;
+    proto.set_string_value(s);
+    return proto;
+  };
+
+  // Real test start here.
+
+  FieldValue model = FieldValue::ObjectValueFromMap(
+      {{"b", FieldValue::TrueValue()},
+       // TODO(rsgowman): add doubles (once they're supported)
+       // {"d", FieldValue::DoubleValue(std::numeric_limits<double>::max())},
+       {"i", FieldValue::IntegerValue(1)},
+       {"n", FieldValue::NullValue()},
+       {"s", FieldValue::StringValue("foo")},
+       // TODO(rsgowman): add arrays (once they're supported)
+       // {"a", [2, "bar", {"b", false}]},
+       {"o", FieldValue::ObjectValueFromMap(
+                 {{"d", FieldValue::IntegerValue(100)},
+                  {"nested",
+                   FieldValue::ObjectValueFromMap(
+                       {{"e", FieldValue::IntegerValue(
+                                  std::numeric_limits<int64_t>::max())}})}})}});
+
+  google::firestore::v1beta1::Value inner_proto;
+  google::protobuf::Map<std::string, google::firestore::v1beta1::Value>* inner_fields = inner_proto.mutable_map_value()->mutable_fields();
+  (*inner_fields)["e"] = EncodeInteger(std::numeric_limits<int64_t>::max());
+
+  google::firestore::v1beta1::Value middle_proto;
+  google::protobuf::Map<std::string, google::firestore::v1beta1::Value>* middle_fields = middle_proto.mutable_map_value()->mutable_fields();
+  (*middle_fields)["d"] = EncodeInteger(100);
+  (*middle_fields)["nested"] = inner_proto;
+
+  google::firestore::v1beta1::Value proto;
+  google::protobuf::Map<std::string, google::firestore::v1beta1::Value>* fields = proto.mutable_map_value()->mutable_fields();
+  (*fields)["b"] = EncodeBoolean(true);
+  (*fields)["i"] = EncodeInteger(1);
+  (*fields)["n"] = EncodeNull();
+  (*fields)["s"] = EncodeString("foo");
+  (*fields)["o"] = middle_proto;
+
+  ExpectRoundTrip(model, proto, FieldValue::Type::Object);
 }
 
 // TODO(rsgowman): Test [en|de]coding multiple protos into the same output
