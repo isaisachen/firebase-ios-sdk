@@ -36,6 +36,11 @@ NSString *const kFIRServiceMeasurement = @"Measurement";
 NSString *const kFIRServicePerformance = @"Performance";
 NSString *const kFIRServiceRemoteConfig = @"RemoteConfig";
 NSString *const kFIRServiceStorage = @"Storage";
+NSString *const kFIRServiceMLVisionOnDeviceFace = @"MLVisionOnDeviceFace";
+NSString *const kFIRServiceMLVisionOnDeviceBarcode = @"MLVisionOnDeviceBarcode";
+NSString *const kFIRServiceMLVisionOnDeviceText = @"MLVisionOnDeviceText";
+NSString *const kFIRServiceMLVisionOnDeviceLabel = @"MLVisionOnDeviceLabel";
+NSString *const kFIRServiceMLModelInterpreter = @"MLModelInterpreter";
 NSString *const kGGLServiceAnalytics = @"Analytics";
 NSString *const kGGLServiceSignIn = @"SignIn";
 
